@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OnsenPlayer</string>
+    <string name="PlayButton">Play</string>
+    <string name="DetailButton">Detail</string>
+    <string name="onsentop">http://onsen.ag/</string>
+    <string name="onsenxml">http://onsen.ag/getXML.php</string>
+    <string name="newSign">new</string>
+    <string name="loading">Loading…</string>
+    <string name="waiting">Please wait…</string>
+    <string name="getStream">Getting Stream…</string>
+    <string name="playNotification">Playing %1$s</string>
+    <string name="XMLreadfail">Cannot get program information</string>
+
+</resources>
