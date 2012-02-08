@@ -108,7 +108,7 @@ public class PlayerService extends Service {
 											}
 											mediaPlayer.setDisplay(null);
 											mediaPlayer.prepare();
-											Notification n = new Notification(android.R.drawable.ic_media_play, 
+											Notification n = new Notification(R.drawable.onsenimg, 
 																				context.getString(R.string.playNotification, title), 
 																				System.currentTimeMillis());
 											Intent intent = new Intent(PlayerService.this, PlayActivity.class);

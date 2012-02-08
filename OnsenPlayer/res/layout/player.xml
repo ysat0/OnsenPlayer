@@ -8,7 +8,7 @@
         android:id="@+id/playerText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Medium Text"
+        android:text=""
         android:textAppearance="?android:attr/textAppearanceMedium" />
 
     <ImageView
@@ -34,7 +34,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
-            android:layout_weight="1" />
+            android:layout_weight="2" />
 
         <LinearLayout
             android:id="@+id/linearLayout2"
@@ -52,8 +52,8 @@
                 android:id="@+id/streamLength"
                 android:layout_width="wrap_content"
                 android:layout_height="0dp"
-                android:layout_weight="1"
-                android:text="0:00" />
+                android:layout_weight="2"
+                android:text="" />
 
             <TextView
                 android:id="@+id/dummytextView3"
