@@ -6,14 +6,16 @@
 
     <WebView
         android:id="@+id/detailWebView"
+        android:layout_weight="1"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_weight="1" />
+        android:layout_height="wrap_content" />
 
     <ImageButton
         android:id="@+id/detailPlayButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_weight="0.01"
         android:src="@android:drawable/ic_media_play" />
 
 </LinearLayout>

@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OnsenPlayer</string>
-    <string name="PlayButton">Play</string>
-    <string name="DetailButton">Detail</string>
     <string name="onsentop">http://onsen.ag/</string>
     <string name="onsenxml">http://onsen.ag/getXML.php</string>
     <string name="newSign">new</string>
