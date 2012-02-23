@@ -1,67 +1,75 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<TableLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/TableLayout1"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical" >
+    android:layout_height="match_parent" >
 
     <TextView
         android:id="@+id/playerText"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Medium Text"
-        android:textAppearance="?android:attr/textAppearanceMedium" />
+        android:text=""
+        android:textAppearance="?android:attr/textAppearanceLarge" />
 
     <ImageView
         android:id="@+id/playerImage"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1.05"
+        android:layout_weight="1"
         android:src="@drawable/ic_launcher" />
 
-    <LinearLayout
-        android:id="@+id/linearLayout1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content" >
+    <TableRow
+        android:id="@+id/tableRow3"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_weight="0.01"
+        android:baselineAligned="false"
+        android:gravity="bottom" >
 
         <ImageButton
             android:id="@+id/playControlButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:src="@android:drawable/ic_media_pause" />
+            android:src="@android:drawable/ic_media_play" />
 
         <SeekBar
             android:id="@+id/playPosition"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
+            android:layout_marginLeft="1dp"
+            android:layout_marginRight="1dp"
             android:layout_weight="1" />
 
         <LinearLayout
-            android:id="@+id/linearLayout2"
+            android:id="@+id/linearLayout1"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:orientation="vertical" >
 
             <TextView
-                android:id="@+id/dummytextView1"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="" />
-
-            <TextView
-                android:id="@+id/streamLength"
+                android:id="@+id/currentPosition"
                 android:layout_width="wrap_content"
                 android:layout_height="0dp"
                 android:layout_weight="1"
-                android:text="0:00" />
+                android:text="" />
 
             <TextView
-                android:id="@+id/dummytextView3"
+                android:id="@+id/separator"
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_weight="1"
+                android:background="@drawable/line"
+                android:text="" />
+
+            <TextView
+                android:id="@+id/duration"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:text="" />
         </LinearLayout>
 
-    </LinearLayout>
+    </TableRow>
 
-</LinearLayout>
+</TableLayout>
