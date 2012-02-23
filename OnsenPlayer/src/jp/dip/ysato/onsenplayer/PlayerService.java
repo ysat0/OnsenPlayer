@@ -111,6 +111,7 @@ public class PlayerService extends Service {
 											Notification n = new Notification(android.R.drawable.ic_media_play, 
 																				context.getString(R.string.playNotification, title), 
 																				System.currentTimeMillis());
+											n.flags = Notification.FLAG_ONGOING_EVENT;
 											Intent intent = new Intent(PlayerService.this, PlayActivity.class);
 											intent.putExtra("program", bundle);
 											PendingIntent ci = PendingIntent.getActivity(context, 0, intent, 0);

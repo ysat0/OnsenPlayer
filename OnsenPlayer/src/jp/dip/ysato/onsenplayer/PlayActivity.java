@@ -19,9 +19,11 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnPreparedListener;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -44,8 +46,9 @@ public class PlayActivity extends Activity {
 	private Intent service;
 	private Bundle bundle;
 	private ImageButton playControlButton;
+	private TextView currentTime;
 	
-	private ProgressDialog ShowDialog() {
+	private ProgressDialog showDialog() {
 		ProgressDialog d;
 		d = new ProgressDialog(this);
 		d.setTitle(R.string.waiting);
@@ -60,7 +63,7 @@ public class PlayActivity extends Activity {
 		public void onReceive(Context arg0, Intent arg1) {
 			String message = arg1.getStringExtra("message");
 			if (message.equals(PlayerService.WaitStream)) {
-				dialog = ShowDialog();
+				dialog = showDialog();
 			}
 			if (message.equals(PlayerService.Resume)) {
 				dialog.cancel();
@@ -73,7 +76,33 @@ public class PlayActivity extends Activity {
 			}
 		}
 	}
-	
+	class LoadImageTask extends AsyncTask<String, Void, Bitmap> {
+		@Override
+		protected Bitmap doInBackground(String... arg0) {
+			// TODO Auto-generated method stub
+			Bitmap bitmap = null;
+			HttpClient httpClient = new DefaultHttpClient();
+			HttpGet get = new HttpGet(arg0[0]);
+			ByteArrayOutputStream imgout = new ByteArrayOutputStream();
+			for(int times = 10; times > 0; times--) {
+				try {
+					HttpResponse imgres = httpClient.execute(get);
+					imgres.getEntity().writeTo(imgout);
+					bitmap = BitmapFactory.decodeByteArray(imgout.toByteArray(), 0, imgout.size());
+					break;
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+				}
+			}
+			httpClient.getConnectionManager().shutdown();
+			return bitmap;
+		}
+		@Override
+		protected void onPostExecute(Bitmap bitmap) {
+			ImageView imageView = (ImageView) findViewById(R.id.playerImage);
+			imageView.setImageBitmap(bitmap);
+		}
+	}
 	@Override
     public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -91,12 +120,22 @@ public class PlayActivity extends Activity {
 						int duration = arg0.getDuration() / 1000;
 						int min = duration / 60;
 						int sec = duration % 60;
-						TextView tv = (TextView) PlayActivity.this.findViewById(R.id.streamLength);
+						TextView tv = (TextView) PlayActivity.this.findViewById(R.id.duration);
 						tv.setText(String.format("%02d:%02d", min, sec));
 						seekbar.setMax(duration);
 						dialog.cancel();
 					}
 				});
+				if(!mediaPlayer.isPlaying())
+					dialog = showDialog();
+				else {
+					int duration = mediaPlayer.getDuration() / 1000;
+					int min = duration / 60;
+					int sec = duration % 60;
+					TextView tv = (TextView) PlayActivity.this.findViewById(R.id.duration);
+					tv.setText(String.format("%02d:%02d", min, sec));
+					seekbar.setMax(duration);
+				}
 			}
 
 			@Override
@@ -107,6 +146,7 @@ public class PlayActivity extends Activity {
 				finish();
 			}
 		};
+		currentTime = (TextView) findViewById(R.id.currentPosition);
     	seekbar = (SeekBar) findViewById(R.id.playPosition);
     	seekbar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
 
@@ -149,7 +189,6 @@ public class PlayActivity extends Activity {
     		Intent intent = getIntent();
     		bundle = intent.getBundleExtra("program");
     	}
-		dialog = ShowDialog();
 		IntentFilter filter = new IntentFilter(PlayerService.Notify);
 		receiver = new PlayerServiceReceiver();
 		registerReceiver(receiver, filter);
@@ -157,6 +196,8 @@ public class PlayActivity extends Activity {
 		service.putExtra("program", bundle);
 		startService(service);
 		bindService(service, serviceConnection, Context.BIND_AUTO_CREATE);
+    	String program[] = bundle.getStringArray("program");
+    	new LoadImageTask().execute(program[2]);
     }
 	@Override
 	public void onDestroy() {
@@ -198,28 +239,16 @@ public class PlayActivity extends Activity {
 					@Override
 					public void run() {
 						// TODO Auto-generated method stub
-						if (seekbar != null && playerService != null)
-							seekbar.setProgress(playerService.getPosition());
+						if (seekbar != null && playerService != null) {
+							int pos = playerService.getPosition();
+							seekbar.setProgress(pos);
+							currentTime.setText(String.format("%02d:%02d", pos / 60, pos % 60));
+						}
 					}
 				});
 			}
 		}
 		playermonitor = Executors.newScheduledThreadPool(1);
 		playermonitor.scheduleWithFixedDelay(new UpdateSeekBar(new Handler()), 0, 500, TimeUnit.MILLISECONDS);
-
-		HttpClient httpClient = new DefaultHttpClient();
-		HttpGet get = new HttpGet(program[2]);
-		ByteArrayOutputStream imgout = new ByteArrayOutputStream();
-		for(int times = 10; times > 0; times--) {
-			try {
-				HttpResponse imgres = httpClient.execute(get);
-				imgres.getEntity().writeTo(imgout);
-				ImageView iv = (ImageView) findViewById(R.id.playerImage);
-				iv.setImageBitmap(BitmapFactory.decodeByteArray(imgout.toByteArray(), 0, imgout.size()));
-				break;
-			} catch (IOException e) {
-				// TODO Auto-generated catch block
-			}
-		}
 	}
 }
