@@ -105,7 +105,7 @@ public class PlayerService extends Service {
 													mediaPlayer.setDataSource(streamfile.getFD());
 													mediaPlayer.setDisplay(null);
 													mediaPlayer.prepare();
-													Notification n = new Notification(R.drawable.onsenimg, 
+													Notification n = new Notification(android.R.drawable.ic_media_play, 
 															PlayerService.this.getString(R.string.playNotification, title), 
 															System.currentTimeMillis());
 													n.flags = Notification.FLAG_ONGOING_EVENT;
@@ -243,6 +243,8 @@ public class PlayerService extends Service {
 		mediaPlayer.release();
 		mediaPlayer = null;
 		unregisterReceiver(connectivityActionReceiver);
+		AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+		audioManager.unregisterMediaButtonEventReceiver(eventReceiver);
 	}
 	@Override
 	public void onStart(Intent intent, int startId) {
