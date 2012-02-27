@@ -5,7 +5,6 @@
     <string name="onsenxml">http://onsen.ag/getXML.php</string>
     <string name="newSign">new</string>
     <string name="loading">読み込み中…</string>
-    <string name="waiting">しばらくお待ちください…</string>
     <string name="getStream">ストリーム取得中…</string>
     <string name="playNotification">%1$s を再生中</string>
     <string name="XMLreadfail">番組情報の取得に失敗しました</string>

@@ -51,8 +51,7 @@ public class PlayActivity extends Activity {
 	private ProgressDialog showDialog() {
 		ProgressDialog d;
 		d = new ProgressDialog(this);
-		d.setTitle(R.string.waiting);
-		d.setMessage("Getting Stream");
+		d.setMessage(getString(R.string.getStream));
 		d.setProgressStyle(ProgressDialog.STYLE_SPINNER);
 		d.show();
 		return d;
@@ -202,7 +201,13 @@ public class PlayActivity extends Activity {
 	@Override
 	public void onDestroy() {
 		unregisterReceiver(receiver);
-		playerService.stopSelf();
+		try {
+			if (playerService != null && !playerService.isPlaying())
+				playerService.stopSelf();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 		super.onDestroy();
 	}
 	@Override

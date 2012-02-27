@@ -1,7 +1,6 @@
 package jp.dip.ysato.onsenplayer;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,7 +41,7 @@ public class PlayerService extends Service {
 	public static final String RemotePlay = "Play";
 	private MediaPlayer mediaPlayer;
 	private NotificationManager notificationManager;
-	public int length;
+	public int length = 0;
 	private GetStream getStream;
 	private BroadcastReceiver connectivityActionReceiver;
 	protected RandomAccessFile cachefile;
@@ -70,79 +69,78 @@ public class PlayerService extends Service {
 			HttpURLConnection http = null;
 			try {
 				URL url = new URL(this.url);
-				http = (HttpURLConnection) url.openConnection();
-				http.setRequestMethod("GET");
-				http.connect();
-				length = Integer.parseInt(http.getHeaderField("Content-Length"));
-				in = http.getInputStream();
 				String f[] = this.url.split("/");
-				final String filename = f[f.length - 1];
+				String filename = f[f.length - 1];
 				File file = new File (getApplicationContext().getCacheDir(), filename);
 				if (file.exists())
 					file.delete();
 				file.deleteOnExit();
 				cachefile = new RandomAccessFile(file, "rw");
-				cachefile.setLength(length);
-				byte buf[] = new byte[128 * 1024];
-				while(length > 0) {
-					try {
-						int receive = in.read(buf);
-						cachefile.write(buf,0, receive);
-						length -= receive;
-						prefetch += receive;
-						if (prefetch < 65536)
-							continue;
-						handler.post(new Runnable() {
-							@Override
-							public void run() {
-								// TODO Auto-generated method stub
-								if (mediaPlayer != null && !mediaPlayer.isPlaying()) {
-									try {
-										if (!initialized) {
-											Context context = getApplicationContext();
-											{
-												File f = new File(context.getCacheDir(), filename);
-												FileInputStream in = new FileInputStream(f);
-												streamfile = new RandomAccessFile(f, "r");
-												mediaPlayer.setDataSource(in.getFD());
+				do {
+					http = (HttpURLConnection) url.openConnection();
+					http.setRequestMethod("GET");
+					if (length > 0)
+						http.setRequestProperty("Range", String.format("%d-", cachefile.getFilePointer()));
+					http.connect();
+					length = Integer.parseInt(http.getHeaderField("Content-Length"));
+					in = http.getInputStream();
+					cachefile.setLength(length);
+					streamfile = new RandomAccessFile(new File(PlayerService.this.getCacheDir(), filename), "r");
+					byte buf[] = new byte[128 * 1024];
+					while(length > 0) {
+						try {
+							int receive = in.read(buf);
+							cachefile.write(buf,0, receive);
+							length -= receive;
+							prefetch += receive;
+							if (prefetch < 65536)
+								continue;
+							handler.post(new Runnable() {
+								@Override
+								public void run() {
+									// TODO Auto-generated method stub
+									if (mediaPlayer != null && !mediaPlayer.isPlaying()) {
+										try {
+											if (!initialized) {
+													mediaPlayer.setDataSource(streamfile.getFD());
+													mediaPlayer.setDisplay(null);
+													mediaPlayer.prepare();
+													Notification n = new Notification(R.drawable.onsenimg, 
+															PlayerService.this.getString(R.string.playNotification, title), 
+															System.currentTimeMillis());
+													n.flags = Notification.FLAG_ONGOING_EVENT;
+													Intent intent = new Intent(PlayerService.this, PlayActivity.class);
+													intent.putExtra("program", bundle);
+													PendingIntent ci = PendingIntent.getActivity(PlayerService.this, 0, intent, 0);
+													n.setLatestEventInfo(PlayerService.this, PlayerService.this.getString(R.string.app_name), title, ci);
+													notificationManager.notify(R.string.app_name, n);
+													mediaPlayer.seekTo(0);
+													initialized = true;
 											}
-											mediaPlayer.setDisplay(null);
-											mediaPlayer.prepare();
-											Notification n = new Notification(R.drawable.onsenimg, 
-																				context.getString(R.string.playNotification, title), 
-																				System.currentTimeMillis());
-											n.flags = Notification.FLAG_ONGOING_EVENT;
-											Intent intent = new Intent(PlayerService.this, PlayActivity.class);
-											intent.putExtra("program", bundle);
-											PendingIntent ci = PendingIntent.getActivity(context, 0, intent, 0);
-											n.setLatestEventInfo(context, "OnsenPlayer", title, ci);
-											notificationManager.notify(R.string.app_name, n);
-											mediaPlayer.seekTo(0);
-											initialized = true;
+											mediaPlayer.start();
+										} catch (IllegalArgumentException e) {
+											// 	TODO Auto-generated catch block
+											e.printStackTrace();
+										} catch (IllegalStateException e) {
+											// TODO Auto-generated catch block
+											e.printStackTrace();
+										} catch (IOException e) {
+											// TODO Auto-generated catch block
+											e.printStackTrace();
 										}
-										mediaPlayer.start();
-									} catch (IllegalArgumentException e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
-									} catch (IllegalStateException e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
-									} catch (IOException e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
 									}
 								}
+							});
+						} catch (IOException e) {
+							try {
+								waitforconnection();
+							} catch (InterruptedException e1) {
+								// TODO Auto-generated catch block
+								e1.printStackTrace();
 							}
-						});
-					} catch (IOException e) {
-						try {
-							waitforconnection();
-						} catch (InterruptedException e1) {
-							// TODO Auto-generated catch block
-							e1.printStackTrace();
 						}
 					}
-				}
+				} while(length > 0);
 			} catch (MalformedURLException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
