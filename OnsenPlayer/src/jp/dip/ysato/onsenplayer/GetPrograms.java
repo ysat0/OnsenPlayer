@@ -56,7 +56,7 @@ public class GetPrograms extends AsyncTask<ProgramAdapter, ProgramAdapter, Void>
 			}
 			GregorianCalendar cal = new GregorianCalendar();
 			int w = cal.get(Calendar.DAY_OF_WEEK) - 2;
-			if (w < 1 || w > 5)
+			if (w < 0 || w > 4)
 				w = 4;
 			for (int i = 0; i < 5; i++) {
 				int dow = cal.get(Calendar.DAY_OF_WEEK) - 1;

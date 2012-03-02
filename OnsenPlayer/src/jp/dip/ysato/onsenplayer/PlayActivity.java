@@ -2,9 +2,6 @@ package jp.dip.ysato.onsenplayer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -21,8 +18,6 @@ import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.media.MediaPlayer;
-import android.media.MediaPlayer.OnPreparedListener;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -31,15 +26,11 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
-import android.widget.SeekBar;
 
 public class PlayActivity extends Activity {
-    private ServiceConnection serviceConnection;
-	protected PlayerService playerService;
-	protected MediaPlayer mediaPlayer;
-	private ScheduledExecutorService playermonitor;
 	private SeekBar seekbar;
 	private ProgressDialog dialog;
 	private PlayerServiceReceiver receiver;
@@ -47,6 +38,9 @@ public class PlayActivity extends Activity {
 	private Bundle bundle;
 	private ImageButton playControlButton;
 	private TextView currentTime;
+	private boolean playing;
+	private ServiceConnection serviceConnection;
+	private Handler updateHandler;
 	
 	private ProgressDialog showDialog() {
 		ProgressDialog d;
@@ -60,18 +54,24 @@ public class PlayActivity extends Activity {
 	class PlayerServiceReceiver extends BroadcastReceiver {
 		@Override
 		public void onReceive(Context arg0, Intent arg1) {
-			String message = arg1.getStringExtra("message");
-			if (message.equals(PlayerService.WaitStream)) {
-				dialog = showDialog();
-			}
-			if (message.equals(PlayerService.Resume)) {
-				dialog.cancel();
-			}
-			if (message.equals(PlayerService.RemotePause)) {
-				playControlButton.setImageResource(android.R.drawable.ic_media_play);
-			}
-			if (message.equals(PlayerService.RemotePlay)) {
-				playControlButton.setImageResource(android.R.drawable.ic_media_pause);
+			String action = arg1.getAction();
+			if (action.equals(PlayerService.Notify)) {
+				String message = arg1.getStringExtra("message");
+				if (message.equals(PlayerService.WaitStream)) {
+					dialog = showDialog();
+				}
+				if (message.equals(PlayerService.Resume)) {
+					dialog.cancel();
+					playing = true;
+				}
+				if (message.equals(PlayerService.RemotePause)) {
+					playControlButton.setImageResource(android.R.drawable.ic_media_play);
+					playing = false;
+				}
+				if (message.equals(PlayerService.RemotePlay)) {
+					playControlButton.setImageResource(android.R.drawable.ic_media_pause);
+					playing = true;
+				}
 			}
 		}
 	}
@@ -106,45 +106,6 @@ public class PlayActivity extends Activity {
     public void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.player);
-		serviceConnection = new ServiceConnection() {
-			@Override
-			public void onServiceConnected(ComponentName arg0, IBinder arg1) {
-				// TODO Auto-generated method stub
-				playerService = ((PlayerService.PlayerBinder)arg1).getService();
-				mediaPlayer = playerService.player();
-				mediaPlayer.setOnPreparedListener(new OnPreparedListener() {
-					@Override
-					public void onPrepared(MediaPlayer arg0) {
-						// TODO Auto-generated method stub
-						int duration = arg0.getDuration() / 1000;
-						int min = duration / 60;
-						int sec = duration % 60;
-						TextView tv = (TextView) PlayActivity.this.findViewById(R.id.duration);
-						tv.setText(String.format("%02d:%02d", min, sec));
-						seekbar.setMax(duration);
-						dialog.cancel();
-					}
-				});
-				if(!mediaPlayer.isPlaying())
-					dialog = showDialog();
-				else {
-					int duration = mediaPlayer.getDuration() / 1000;
-					int min = duration / 60;
-					int sec = duration % 60;
-					TextView tv = (TextView) PlayActivity.this.findViewById(R.id.duration);
-					tv.setText(String.format("%02d:%02d", min, sec));
-					seekbar.setMax(duration);
-				}
-			}
-
-			@Override
-			public void onServiceDisconnected(ComponentName arg0) {
-				// TODO Auto-generated method stub
-				playerService = null;
-				mediaPlayer = null;
-				finish();
-			}
-		};
 		currentTime = (TextView) findViewById(R.id.currentPosition);
     	seekbar = (SeekBar) findViewById(R.id.playPosition);
     	seekbar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
@@ -163,7 +124,10 @@ public class PlayActivity extends Activity {
 			@Override
 			public void onStopTrackingTouch(SeekBar arg0) {
 				// TODO Auto-generated method stub
-				mediaPlayer.seekTo(arg0.getProgress() * 1000);
+				Intent intent = new Intent(PlayActivity.this, PlayerService.class);
+				intent.setAction(PlayerService.SEEK);
+				intent.putExtra("position", arg0.getProgress());
+				startService(intent);
 			}
     	});
     	playControlButton = (ImageButton) findViewById(R.id.playControlButton);
@@ -171,14 +135,16 @@ public class PlayActivity extends Activity {
 			@Override
 			public void onClick(View arg0) {
 				// TODO Auto-generated method stub
-				try {
-					if (playerService.isPlaying()) {
-						playerService.pause(true);
-						playControlButton.setImageResource(android.R.drawable.ic_media_play);
-					} else {
-						playControlButton.setImageResource(android.R.drawable.ic_media_pause);
-					}
-				} catch (IOException e) {
+				if (playing) {
+					playControlButton.setImageResource(android.R.drawable.ic_media_play);
+					Intent intent = new Intent(PlayActivity.this, PlayerService.class);
+					intent.setAction(PlayerService.PAUSE);
+					startService(intent);
+				} else {
+					playControlButton.setImageResource(android.R.drawable.ic_media_pause);
+					Intent intent = new Intent(PlayActivity.this, PlayerService.class);
+					intent.setAction(PlayerService.PLAY);
+					startService(intent);
 				}
 			}
     	});
@@ -188,26 +154,21 @@ public class PlayActivity extends Activity {
     		Intent intent = getIntent();
     		bundle = intent.getBundleExtra("program");
     	}
-		IntentFilter filter = new IntentFilter(PlayerService.Notify);
+		IntentFilter filter = new IntentFilter();
+		filter.addAction(PlayerService.Notify);
 		receiver = new PlayerServiceReceiver();
 		registerReceiver(receiver, filter);
 		service = new Intent(this, PlayerService.class);
 		service.putExtra("program", bundle);
+		service.setAction(PlayerService.START);
 		startService(service);
-		bindService(service, serviceConnection, Context.BIND_AUTO_CREATE);
     	String program[] = bundle.getStringArray("program");
     	new LoadImageTask().execute(program[2]);
+    	updateHandler = new Handler();
     }
 	@Override
 	public void onDestroy() {
 		unregisterReceiver(receiver);
-		try {
-			if (playerService != null && !playerService.isPlaying())
-				playerService.stopSelf();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 		super.onDestroy();
 	}
 	@Override
@@ -231,29 +192,54 @@ public class PlayActivity extends Activity {
     	t.append(no);
     	TextView tv = (TextView) findViewById(R.id.playerText);
     	tv.setText(t.toString());
-
-    	class UpdateSeekBar implements Runnable {
-			private Handler handler;
-			public UpdateSeekBar(Handler handler) {
-				this.handler = handler;
+    	Intent intent = new Intent(this, PlayerService.class);
+    	serviceConnection = new ServiceConnection() {
+			@Override
+			public void onServiceConnected(ComponentName arg0, IBinder arg1) {
+				// TODO Auto-generated method stub
+				((PlayerService.PlayerServiceBinder)arg1).registerActivity(PlayActivity.this);
 			}
+
+			@Override
+			public void onServiceDisconnected(ComponentName arg0) {
+				// TODO Auto-generated method stub
+				
+			}
+    		
+    	};
+    	bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+	}
+	@Override
+	public void onPause() {
+		unbindService(serviceConnection);
+		super.onPause();
+	}
+	public void setDuration(int dur) {
+		// TODO Auto-generated method stub
+		final int duration = dur;
+		updateHandler.post(new Runnable() {
 			@Override
 			public void run() {
 				// TODO Auto-generated method stub
-				handler.post(new Runnable() {
-					@Override
-					public void run() {
-						// TODO Auto-generated method stub
-						if (seekbar != null && playerService != null) {
-							int pos = playerService.getPosition();
-							seekbar.setProgress(pos);
-							currentTime.setText(String.format("%02d:%02d", pos / 60, pos % 60));
-						}
-					}
-				});
+				TextView textView = (TextView) findViewById(R.id.duration);				
+				textView.setText(String.format("%02d:%02d", duration / 60, duration % 60));
+				seekbar.setMax(duration);
+				if (dialog != null)
+					dialog.cancel();
 			}
-		}
-		playermonitor = Executors.newScheduledThreadPool(1);
-		playermonitor.scheduleWithFixedDelay(new UpdateSeekBar(new Handler()), 0, 500, TimeUnit.MILLISECONDS);
+		});
+		playing = true;
+	}
+	public void setPosition(int pos) {
+		// TODO Auto-generated method stub
+		final int position = pos;
+		updateHandler.post(new Runnable() {
+			@Override
+			public void run() {
+				// TODO Auto-generated method stub
+				currentTime.setText(String.format("%02d:%02d", position / 60, position % 60));
+				seekbar.setProgress(position);
+			}
+		});
 	}
 }

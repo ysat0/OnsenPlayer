@@ -1,45 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
-<TableLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/TableLayout1"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/LinearLayout1"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:baselineAligned="true" >
 
-    <TableRow
-        android:id="@+id/tableRow1"
+    <ImageView
+        android:id="@+id/programImage"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content" >
+        android:layout_height="wrap_content"
+        android:src="@drawable/ic_launcher" />
 
-        <ImageView
-            android:id="@+id/programImage"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:src="@drawable/ic_launcher" />
+    <TextView
+        android:id="@+id/programTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textAppearance="?android:attr/textAppearanceMedium" />
 
-        <TextView
-            android:id="@+id/programTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text=""
-            android:textAppearance="?android:attr/textAppearanceMedium" />
+    <TextView
+        android:id="@+id/updateSign"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="#ff0000"
+        android:textSize="10sp"
+        android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/updateSign"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:textColor="#ff0000"
-            android:text="" />
+    <ImageButton
+        android:id="@+id/playButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@android:drawable/ic_media_play" />
 
-        <ImageButton
-            android:id="@+id/playButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="right"
-            android:src="@android:drawable/ic_media_play" />
-    </TableRow>
-
-</TableLayout>
-
+</LinearLayout>

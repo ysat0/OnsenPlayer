@@ -1,6 +1,7 @@
 package jp.dip.ysato.onsenplayer;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -10,6 +11,7 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import android.app.Notification;
@@ -20,72 +22,73 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnCompletionListener;
-import android.net.ConnectivityManager;
-import android.net.NetworkInfo;
 import android.os.Binder;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.os.PowerManager.WakeLock;
+import android.util.Log;
 import android.view.KeyEvent;
-import android.widget.Toast;
 
 public class PlayerService extends Service {
-	public static final String Notify = ".NOTIFY";
+	public static final String Notify = PlayerService.class.getName()+".NOTIFY";
 	public static final String WaitStream = "WaitStream";
 	public static final String Resume = "Resume";
 	public static final String RemotePause = "Pause";
 	public static final String RemotePlay = "Play";
+	public static final String START = "Start";
+	public static final String PAUSE = "Pause";
+	public static final String PLAY = "Play";
+	public static final String SEEK = "Seek";
 	private MediaPlayer mediaPlayer;
 	private NotificationManager notificationManager;
-	public int length = 0;
+	private int length = 0;
 	private GetStream getStream;
 	private BroadcastReceiver connectivityActionReceiver;
 	protected RandomAccessFile cachefile;
 	protected RandomAccessFile streamfile;
-	private ScheduledExecutorService playermonitor;
 	protected int prefetch;
 	private Bundle bundle;
 	private boolean manualPause;
 	public boolean waitstream;
 	private ComponentName eventReceiver;
+	private WakeLock wakeLock;
+	private String url;
+	private ScheduledFuture<?> monitorThread;
+	private PlayActivity activity;
+	private ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(1);
 	class GetStream extends Thread {
-		private boolean initialized;
 		private String url;
-		private Handler handler;
-		private String title;
-		public GetStream(Handler handler) {
-			String program[] = bundle.getStringArray("program");
-			this.url = program[1];
-			this.title = program[3];
-			this.handler = handler;
+		public GetStream(String url) {
+			this.url = url;
 		}
 		public void run() {
 			InputStream in = null;
 			FileOutputStream out = null;
 			HttpURLConnection http = null;
 			try {
-				URL url = new URL(this.url);
-				String f[] = this.url.split("/");
-				String filename = f[f.length - 1];
-				File file = new File (getApplicationContext().getCacheDir(), filename);
+				String filename = urltofile(this.url);
+				File file = new File (PlayerService.this.getCacheDir(), filename);
 				if (file.exists())
 					file.delete();
 				file.deleteOnExit();
 				cachefile = new RandomAccessFile(file, "rw");
+				URL url = new URL(this.url);
 				do {
 					http = (HttpURLConnection) url.openConnection();
 					http.setRequestMethod("GET");
 					if (length > 0)
-						http.setRequestProperty("Range", String.format("%d-", cachefile.getFilePointer()));
+						http.setRequestProperty("Range", String.format("%d-", cachefile.getFilePointer() - 1));
 					http.connect();
-					length = Integer.parseInt(http.getHeaderField("Content-Length"));
+					http.setReadTimeout(30 * 1000);
+					if (length == 0) {
+						length = Integer.parseInt(http.getHeaderField("Content-Length"));
+						cachefile.setLength(length);
+					}
 					in = http.getInputStream();
-					cachefile.setLength(length);
-					streamfile = new RandomAccessFile(new File(PlayerService.this.getCacheDir(), filename), "r");
 					byte buf[] = new byte[128 * 1024];
 					while(length > 0) {
 						try {
@@ -93,51 +96,10 @@ public class PlayerService extends Service {
 							cachefile.write(buf,0, receive);
 							length -= receive;
 							prefetch += receive;
-							if (prefetch < 65536)
-								continue;
-							handler.post(new Runnable() {
-								@Override
-								public void run() {
-									// TODO Auto-generated method stub
-									if (mediaPlayer != null && !mediaPlayer.isPlaying()) {
-										try {
-											if (!initialized) {
-													mediaPlayer.setDataSource(streamfile.getFD());
-													mediaPlayer.setDisplay(null);
-													mediaPlayer.prepare();
-													Notification n = new Notification(android.R.drawable.ic_media_play, 
-															PlayerService.this.getString(R.string.playNotification, title), 
-															System.currentTimeMillis());
-													n.flags = Notification.FLAG_ONGOING_EVENT;
-													Intent intent = new Intent(PlayerService.this, PlayActivity.class);
-													intent.putExtra("program", bundle);
-													PendingIntent ci = PendingIntent.getActivity(PlayerService.this, 0, intent, 0);
-													n.setLatestEventInfo(PlayerService.this, PlayerService.this.getString(R.string.app_name), title, ci);
-													notificationManager.notify(R.string.app_name, n);
-													mediaPlayer.seekTo(0);
-													initialized = true;
-											}
-											mediaPlayer.start();
-										} catch (IllegalArgumentException e) {
-											// 	TODO Auto-generated catch block
-											e.printStackTrace();
-										} catch (IllegalStateException e) {
-											// TODO Auto-generated catch block
-											e.printStackTrace();
-										} catch (IOException e) {
-											// TODO Auto-generated catch block
-											e.printStackTrace();
-										}
-									}
-								}
-							});
 						} catch (IOException e) {
-							try {
-								waitforconnection();
-							} catch (InterruptedException e1) {
-								// TODO Auto-generated catch block
-								e1.printStackTrace();
-							}
+							prefetch = 0;
+							http.disconnect();
+							break;
 						}
 					}
 				} while(length > 0);
@@ -160,29 +122,95 @@ public class PlayerService extends Service {
 					e.printStackTrace();
 				}
 			}
+			Log.d("OnsenPlayer", "Download complete");
 			// TODO Auto-generated method stub
-		}
-		private synchronized void waitforconnection() throws InterruptedException {
-			// TODO Auto-generated method stub
-			waitstream = true;
-			wait();
-			if (!manualPause)
-				mediaPlayer.start();
-		}
-		public synchronized void resumeconnection() {
-			waitstream = false;
-			notify();
 		}
 	}
 	
-	class PlayerBinder extends Binder {
-		public PlayerService getService() {
-			return PlayerService.this;
+	class PlayMonitor implements Runnable {
+		private String title;
+		private String file;
+		public PlayMonitor(String file, String title) {
+			this.title = title;
+			this.file = file;
 		}
-
-		public Bundle getBundle() {
+		@Override
+		public void run() {
 			// TODO Auto-generated method stub
-			return PlayerService.this.bundle;
+			try {
+				if (cachefile != null && streamfile != null) {
+					try {
+						if ((cachefile.getFilePointer() - streamfile.getFilePointer()) < 65536) {
+							if (mediaPlayer.isPlaying()) {
+								mediaPlayer.pause();
+								prefetch = 0;
+								sendMessage(WaitStream);
+								wakeLock.release();
+							}
+						} else {
+							if (!mediaPlayer.isPlaying() && !manualPause) {
+								mediaPlayer.start();
+								sendMessage(Resume);
+								wakeLock.acquire();
+							}
+						}
+					} catch (IllegalStateException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				if (streamfile == null && prefetch > 65536) {
+					try {
+						streamfile = new RandomAccessFile(new File(PlayerService.this.getCacheDir(), urltofile(file)), "r");
+						mediaPlayer.setDataSource(streamfile.getFD());
+						mediaPlayer.setDisplay(null);
+						mediaPlayer.prepare();
+						Notification n = new Notification(android.R.drawable.ic_media_play, 
+								PlayerService.this.getString(R.string.playNotification, title), 
+								System.currentTimeMillis());
+						n.flags = Notification.FLAG_ONGOING_EVENT;
+						Intent intent = new Intent(PlayerService.this, PlayActivity.class);
+						intent.putExtra("program", bundle);
+						Context context = PlayerService.this;
+						PendingIntent ci = PendingIntent.getActivity(context, 0, intent, 0);
+						n.setLatestEventInfo(context, context.getString(R.string.app_name), 
+								              context.getString(R.string.playNotification, title), ci);
+						notificationManager.notify(R.string.app_name, n);
+						mediaPlayer.start();
+						wakeLock.acquire();
+						if (activity != null)
+							activity.setDuration(mediaPlayer.getDuration() / 1000);
+					} catch (FileNotFoundException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalArgumentException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IllegalStateException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				}
+				if (activity != null) {
+					int position = mediaPlayer.getCurrentPosition() / 1000;
+					activity.setPosition(position);
+				}
+			} catch(Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	class PlayerServiceBinder extends Binder {
+		public void registerActivity(PlayActivity activity) {
+			PlayerService.this.activity = activity;
+			if (streamfile != null && prefetch > 65536)
+				activity.setDuration(mediaPlayer.getDuration() / 1000);
 		}
 	}
 	@Override
@@ -204,8 +232,9 @@ public class PlayerService extends Service {
 				// TODO Auto-generated method stub
 				if (intent.getAction().equals(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)) {
 					mediaPlayer.pause();
-					sendIntent(RemotePause);
+					sendMessage(RemotePause);
 					sendBroadcast(intent);
+					wakeLock.release();
 				} else if (intent.getAction().equals(Intent.ACTION_MEDIA_BUTTON)) {
 					KeyEvent keyEvent = (KeyEvent) intent.getExtras().get(Intent.EXTRA_KEY_EVENT);
 					if (keyEvent.getAction() != KeyEvent.ACTION_DOWN)
@@ -214,32 +243,44 @@ public class PlayerService extends Service {
 					case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
 						if (mediaPlayer.isPlaying()) {
 							mediaPlayer.pause();
-							sendIntent(RemotePause);
+							sendMessage(RemotePause);
+							wakeLock.release();
 						} else {
 							mediaPlayer.start();
-							sendIntent(RemotePlay);
+							sendMessage(RemotePlay);
+							wakeLock.acquire();
 						}
 					}
 				}
 			}
 
-			private void sendIntent(String message) {
-				// TODO Auto-generated method stub
-				Intent i = new Intent(PlayerService.this, PlayActivity.class);
-				i.putExtra("message", message);
-				i.setAction(Notify);
-			}
-			
 		}
 		eventReceiver = new ComponentName(this, MusicIntentReceiver.class);
 		AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 		audioManager.registerMediaButtonEventReceiver(eventReceiver);
+		PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getString(R.string.app_name));
+	}
+	private void sendMessage(String message) {
+		// TODO Auto-generated method stub
+		Intent i = new Intent(Notify);
+		i.putExtra("message", message);
+		sendBroadcast(i);
+	}
+	
+	private String urltofile(String url) {
+		// TODO Auto-generated method stub
+		String f[] = url.split("/");
+		String filename = f[f.length - 1];
+		return filename;
 	}
 	@Override
 	public void onDestroy()
 	{
 		notificationManager.cancelAll();
 		getStream.stop();
+		if(mediaPlayer.isPlaying())
+			wakeLock.release();
 		mediaPlayer.release();
 		mediaPlayer = null;
 		unregisterReceiver(connectivityActionReceiver);
@@ -249,88 +290,43 @@ public class PlayerService extends Service {
 	@Override
 	public void onStart(Intent intent, int startId) {
 		super.onStart(intent, startId);
-		bundle = intent.getBundleExtra("program");
-		getStream = new GetStream(new Handler());
-		connectivityActionReceiver = new BroadcastReceiver() {
-			@Override
-			public void onReceive(Context arg0, Intent arg1) {
-				// TODO Auto-generated method stub
-				ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-				NetworkInfo ni = cm.getActiveNetworkInfo();
-				if ((ni != null) && ni.isConnected() && (getStream.getState() == Thread.State.WAITING)) {
-					getStream.resumeconnection();
-				}
+		String action = intent.getAction();
+		if (action.equals(PlayerService.START)) {
+			bundle = intent.getBundleExtra("program");
+			String[] program = bundle.getStringArray("program");
+			if (!program[1].equals(url)) {
+				url = program[1];
+				getStream = new GetStream(program[1]);
+				getStream.start();
+				sendMessage(WaitStream);
+				if (monitorThread != null)
+					monitorThread.cancel(true);
+				monitorThread = threadPool.scheduleAtFixedRate(new PlayMonitor(program[1], program[3]), 0, 500, TimeUnit.MILLISECONDS);
 			}
-		};
-		registerReceiver(connectivityActionReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
-		getStream.start();
-		playermonitor = Executors.newScheduledThreadPool(1);
-		playermonitor.scheduleWithFixedDelay(new Runnable() {
-			@Override
-			public void run() {
-				// TODO Auto-generated method stub
-				if (mediaPlayer != null && cachefile != null && streamfile != null) {
-					try {
-						if ((cachefile.getFilePointer() - streamfile.getFilePointer()) < 4096) {
-							mediaPlayer.pause();
-							prefetch = 0;
-							Intent intent = new Intent(PlayerService.this, PlayActivity.class);
-							intent.putExtra("message", WaitStream);
-							intent.setAction(Notify);
-							sendBroadcast(intent);
-							Toast.makeText(PlayerService.this, R.string.getStream, Toast.LENGTH_SHORT);
-						} else {
-							if (!mediaPlayer.isPlaying()) {
-								mediaPlayer.start();
-								Intent intent = new Intent(PlayerService.this, PlayActivity.class);
-								intent.putExtra("message", Resume);
-								intent.setAction(Notify);
-								sendBroadcast(intent);
-							}
-						}
-						if (cachefile.getFilePointer() >= length)
-							playermonitor.shutdown();
-					} catch (IllegalStateException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					} catch (IOException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}
+		}
+		if (action.equals(PlayerService.PAUSE)) {
+			manualPause = true;
+			mediaPlayer.pause();
+		}
+		if (action.equals(PlayerService.PLAY)) {
+			manualPause = false;
+		}
+		if (action.equals(PlayerService.SEEK)) {
+			if (length <= 0) {
+				int position = intent.getIntExtra("position", -1);
+				if (position >= 0)
+					mediaPlayer.seekTo(position * 1000);				
 			}
-		}, 0, 1, TimeUnit.SECONDS);
-
+		}
 	}
 	@Override
 	public IBinder onBind(Intent intent) {
 		// TODO Auto-generated method stub
-		return new PlayerBinder();
+		return new PlayerServiceBinder();
 	}
-	public MediaPlayer player() {
-		return mediaPlayer;
-	}
-	public void pause(boolean b) {
-		// TODO Auto-generated method stub
-		manualPause = b;
-		if (b && mediaPlayer.isPlaying())
-			mediaPlayer.pause();
-		else
-			if (!waitstream)
-				mediaPlayer.start();
-	}
-	public int getPosition() {
-		// TODO Auto-generated method stub
-		if (mediaPlayer != null)
-			return mediaPlayer.getCurrentPosition() / 1000;
-		else
-			return 0;
-	}
-	public boolean isPlaying() throws IOException {
-		// TODO Auto-generated method stub
-		if (mediaPlayer != null)
-			return mediaPlayer.isPlaying() || (!manualPause);
-		else
-			throw new IOException();
+	@Override
+	public boolean onUnbind(Intent intent) {
+		activity = null;
+		return true;
 	}
 }
