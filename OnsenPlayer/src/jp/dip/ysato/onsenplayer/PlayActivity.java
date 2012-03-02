@@ -140,11 +140,13 @@ public class PlayActivity extends Activity {
 					Intent intent = new Intent(PlayActivity.this, PlayerService.class);
 					intent.setAction(PlayerService.PAUSE);
 					startService(intent);
+					playing = false;
 				} else {
 					playControlButton.setImageResource(android.R.drawable.ic_media_pause);
 					Intent intent = new Intent(PlayActivity.this, PlayerService.class);
 					intent.setAction(PlayerService.PLAY);
 					startService(intent);
+					playing = true;
 				}
 			}
     	});
