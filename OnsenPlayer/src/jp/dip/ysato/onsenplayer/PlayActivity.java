@@ -22,6 +22,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.ImageButton;
@@ -135,19 +136,7 @@ public class PlayActivity extends Activity {
 			@Override
 			public void onClick(View arg0) {
 				// TODO Auto-generated method stub
-				if (playing) {
-					playControlButton.setImageResource(android.R.drawable.ic_media_play);
-					Intent intent = new Intent(PlayActivity.this, PlayerService.class);
-					intent.setAction(PlayerService.PAUSE);
-					startService(intent);
-					playing = false;
-				} else {
-					playControlButton.setImageResource(android.R.drawable.ic_media_pause);
-					Intent intent = new Intent(PlayActivity.this, PlayerService.class);
-					intent.setAction(PlayerService.PLAY);
-					startService(intent);
-					playing = true;
-				}
+				toggleState();
 			}
     	});
     	if (savedInstanceState != null) {
@@ -168,6 +157,22 @@ public class PlayActivity extends Activity {
     	new LoadImageTask().execute(program[2]);
     	updateHandler = new Handler();
     }
+	protected void toggleState() {
+		// TODO Auto-generated method stub
+		if (playing) {
+			playControlButton.setImageResource(android.R.drawable.ic_media_play);
+			Intent intent = new Intent(PlayActivity.this, PlayerService.class);
+			intent.setAction(PlayerService.PAUSE);
+			startService(intent);
+			playing = false;
+		} else {
+			playControlButton.setImageResource(android.R.drawable.ic_media_pause);
+			Intent intent = new Intent(PlayActivity.this, PlayerService.class);
+			intent.setAction(PlayerService.PLAY);
+			startService(intent);
+			playing = true;
+		}
+	}
 	@Override
 	public void onDestroy() {
 		unregisterReceiver(receiver);
@@ -207,7 +212,6 @@ public class PlayActivity extends Activity {
 				// TODO Auto-generated method stub
 				
 			}
-    		
     	};
     	bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
 	}
@@ -243,5 +247,12 @@ public class PlayActivity extends Activity {
 				seekbar.setProgress(position);
 			}
 		});
+	}
+	public void setPlayState(boolean play) {
+		if (play)
+			playControlButton.setImageResource(android.R.drawable.ic_media_pause);
+		else
+			playControlButton.setImageResource(android.R.drawable.ic_media_play);
+		playing = play;
 	}
 }

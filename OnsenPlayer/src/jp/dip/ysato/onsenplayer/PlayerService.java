@@ -22,7 +22,9 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.media.AudioManager;
+import android.media.AudioManager.OnAudioFocusChangeListener;
 import android.media.MediaPlayer;
 import android.media.MediaPlayer.OnCompletionListener;
 import android.os.Binder;
@@ -43,23 +45,24 @@ public class PlayerService extends Service {
 	public static final String PAUSE = "Pause";
 	public static final String PLAY = "Play";
 	public static final String SEEK = "Seek";
+		public static final String PlayPause = "PlayPause";
 	private MediaPlayer mediaPlayer;
 	private NotificationManager notificationManager;
 	private int length = 0;
 	private GetStream getStream;
-	private BroadcastReceiver connectivityActionReceiver;
 	protected RandomAccessFile cachefile;
 	protected RandomAccessFile streamfile;
 	protected int prefetch;
 	private Bundle bundle;
 	private boolean manualPause;
 	public boolean waitstream;
-	private ComponentName eventReceiver;
 	private WakeLock wakeLock;
 	private String url;
 	private ScheduledFuture<?> monitorThread;
 	private PlayActivity activity;
 	private ScheduledExecutorService threadPool = Executors.newScheduledThreadPool(1);
+	private AudioManager audioManager;
+	private OnAudioFocusChangeListener onAudioFocusChangeListener;
 	class GetStream extends Thread {
 		private String url;
 		public GetStream(String url) {
@@ -152,6 +155,7 @@ public class PlayerService extends Service {
 								mediaPlayer.start();
 								sendMessage(Resume);
 								wakeLock.acquire();
+								setNotification(title);
 							}
 						}
 					} catch (IllegalStateException e) {
@@ -168,17 +172,8 @@ public class PlayerService extends Service {
 						mediaPlayer.setDataSource(streamfile.getFD());
 						mediaPlayer.setDisplay(null);
 						mediaPlayer.prepare();
-						Notification n = new Notification(android.R.drawable.ic_media_play, 
-								PlayerService.this.getString(R.string.playNotification, title), 
-								System.currentTimeMillis());
-						n.flags = Notification.FLAG_ONGOING_EVENT;
-						Intent intent = new Intent(PlayerService.this, PlayActivity.class);
-						intent.putExtra("program", bundle);
-						Context context = PlayerService.this;
-						PendingIntent ci = PendingIntent.getActivity(context, 0, intent, 0);
-						n.setLatestEventInfo(context, context.getString(R.string.app_name), 
-								              context.getString(R.string.playNotification, title), ci);
-						notificationManager.notify(R.string.app_name, n);
+						setNotification(title);
+						audioManager.requestAudioFocus(onAudioFocusChangeListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT);
 						mediaPlayer.start();
 						wakeLock.acquire();
 						if (activity != null)
@@ -226,40 +221,27 @@ public class PlayerService extends Service {
 					PlayerService.this.stopSelf();
 			}
 		});
-		class MusicIntentReceiver extends BroadcastReceiver {
+		onAudioFocusChangeListener = new OnAudioFocusChangeListener() {
 			@Override
-			public void onReceive(Context context, Intent intent) {
+			public void onAudioFocusChange(int arg0) {
 				// TODO Auto-generated method stub
-				if (intent.getAction().equals(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)) {
-					mediaPlayer.pause();
-					sendMessage(RemotePause);
-					sendBroadcast(intent);
-					wakeLock.release();
-				} else if (intent.getAction().equals(Intent.ACTION_MEDIA_BUTTON)) {
-					KeyEvent keyEvent = (KeyEvent) intent.getExtras().get(Intent.EXTRA_KEY_EVENT);
-					if (keyEvent.getAction() != KeyEvent.ACTION_DOWN)
-						return ;
-					switch(keyEvent.getKeyCode()) {
-					case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-						if (mediaPlayer.isPlaying()) {
-							mediaPlayer.pause();
-							sendMessage(RemotePause);
-							wakeLock.release();
-						} else {
-							mediaPlayer.start();
-							sendMessage(RemotePlay);
-							wakeLock.acquire();
-						}
-					}
-				}
 			}
-
-		}
-		eventReceiver = new ComponentName(this, MusicIntentReceiver.class);
-		AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-		audioManager.registerMediaButtonEventReceiver(eventReceiver);
+			
+		};
+		audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 		PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, getString(R.string.app_name));
+	}
+	public void setNotification(String title) {
+		// TODO Auto-generated method stub
+		Notification n = new Notification(android.R.drawable.ic_media_play, getString(R.string.playNotification, title), 
+				System.currentTimeMillis());
+		n.flags = Notification.FLAG_ONGOING_EVENT;
+		Intent intent = new Intent(this, PlayActivity.class);
+		intent.putExtra("program", bundle);
+		PendingIntent ci = PendingIntent.getActivity(this, 0, intent, 0);
+		n.setLatestEventInfo(this, getString(R.string.app_name), getString(R.string.playNotification, title), ci);
+		notificationManager.notify(R.string.app_name, n);
 	}
 	private void sendMessage(String message) {
 		// TODO Auto-generated method stub
@@ -283,9 +265,7 @@ public class PlayerService extends Service {
 			wakeLock.release();
 		mediaPlayer.release();
 		mediaPlayer = null;
-		unregisterReceiver(connectivityActionReceiver);
-		AudioManager audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-		audioManager.unregisterMediaButtonEventReceiver(eventReceiver);
+		audioManager.abandonAudioFocus(onAudioFocusChangeListener);
 	}
 	@Override
 	public void onStart(Intent intent, int startId) {
@@ -304,9 +284,12 @@ public class PlayerService extends Service {
 				monitorThread = threadPool.scheduleAtFixedRate(new PlayMonitor(program[1], program[3]), 0, 500, TimeUnit.MILLISECONDS);
 			}
 		}
-		if (action.equals(PlayerService.PAUSE)) {
+		if (action.equals(PlayerService.PAUSE) && mediaPlayer.isPlaying()) {
 			manualPause = true;
 			mediaPlayer.pause();
+			notificationManager.cancel(R.string.app_name);
+			if (activity != null)
+				activity.setPlayState(false);
 		}
 		if (action.equals(PlayerService.PLAY)) {
 			manualPause = false;
@@ -317,6 +300,17 @@ public class PlayerService extends Service {
 				if (position >= 0)
 					mediaPlayer.seekTo(position * 1000);				
 			}
+		}
+		if (action.equals(PlayerService.PlayPause)) {
+			if (manualPause)
+				manualPause = false;
+			else if (mediaPlayer.isPlaying()) {
+				manualPause = true;
+				mediaPlayer.pause();
+				notificationManager.cancel(R.string.app_name);
+			}
+			if (activity != null)
+				activity.setPlayState(!manualPause);
 		}
 	}
 	@Override
