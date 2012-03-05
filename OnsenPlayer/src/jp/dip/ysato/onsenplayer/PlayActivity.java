@@ -176,6 +176,7 @@ public class PlayActivity extends Activity {
 	@Override
 	public void onDestroy() {
 		unregisterReceiver(receiver);
+		unbindService(serviceConnection);
 		super.onDestroy();
 	}
 	@Override
