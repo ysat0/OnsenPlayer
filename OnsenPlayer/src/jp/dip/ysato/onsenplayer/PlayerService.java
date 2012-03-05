@@ -18,11 +18,8 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.BroadcastReceiver;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.media.AudioManager;
 import android.media.AudioManager.OnAudioFocusChangeListener;
 import android.media.MediaPlayer;
@@ -33,7 +30,6 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.PowerManager.WakeLock;
 import android.util.Log;
-import android.view.KeyEvent;
 
 public class PlayerService extends Service {
 	public static final String Notify = PlayerService.class.getName()+".NOTIFY";
@@ -45,7 +41,7 @@ public class PlayerService extends Service {
 	public static final String PAUSE = "Pause";
 	public static final String PLAY = "Play";
 	public static final String SEEK = "Seek";
-		public static final String PlayPause = "PlayPause";
+	public static final String PlayPause = "PlayPause";
 	private MediaPlayer mediaPlayer;
 	private NotificationManager notificationManager;
 	private int length = 0;
@@ -74,7 +70,7 @@ public class PlayerService extends Service {
 			HttpURLConnection http = null;
 			try {
 				String filename = urltofile(this.url);
-				File file = new File (PlayerService.this.getCacheDir(), filename);
+				File file = new File (PlayerService.this.getExternalFilesDir(null), filename);
 				if (file.exists())
 					file.delete();
 				file.deleteOnExit();
@@ -84,7 +80,7 @@ public class PlayerService extends Service {
 					http = (HttpURLConnection) url.openConnection();
 					http.setRequestMethod("GET");
 					if (length > 0)
-						http.setRequestProperty("Range", String.format("%d-", cachefile.getFilePointer() - 1));
+						http.setRequestProperty("Range", String.format("%d-", cachefile.getFilePointer()));
 					http.connect();
 					http.setReadTimeout(30 * 1000);
 					if (length == 0) {
@@ -151,7 +147,7 @@ public class PlayerService extends Service {
 								wakeLock.release();
 							}
 						} else {
-							if (!mediaPlayer.isPlaying() && !manualPause) {
+							if (mediaPlayer != null && !mediaPlayer.isPlaying() && !manualPause) {
 								mediaPlayer.start();
 								sendMessage(Resume);
 								wakeLock.acquire();
@@ -168,7 +164,7 @@ public class PlayerService extends Service {
 				}
 				if (streamfile == null && prefetch > 65536) {
 					try {
-						streamfile = new RandomAccessFile(new File(PlayerService.this.getCacheDir(), urltofile(file)), "r");
+						streamfile = new RandomAccessFile(new File(PlayerService.this.getExternalFilesDir(null), urltofile(file)), "r");
 						mediaPlayer.setDataSource(streamfile.getFD());
 						mediaPlayer.setDisplay(null);
 						mediaPlayer.prepare();
@@ -218,7 +214,7 @@ public class PlayerService extends Service {
 			public void onCompletion(MediaPlayer arg0) {
 				// TODO Auto-generated method stub
 				if (length <= 0)
-					PlayerService.this.stopSelf();
+					notificationManager.cancel(R.string.app_name);
 			}
 		});
 		onAudioFocusChangeListener = new OnAudioFocusChangeListener() {
@@ -234,7 +230,7 @@ public class PlayerService extends Service {
 	}
 	public void setNotification(String title) {
 		// TODO Auto-generated method stub
-		Notification n = new Notification(android.R.drawable.ic_media_play, getString(R.string.playNotification, title), 
+		Notification n = new Notification(R.drawable.ic_launcher, getString(R.string.playNotification, title), 
 				System.currentTimeMillis());
 		n.flags = Notification.FLAG_ONGOING_EVENT;
 		Intent intent = new Intent(this, PlayActivity.class);
